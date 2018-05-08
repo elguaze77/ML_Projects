@@ -1,0 +1,85 @@
+
+require(Rmosek)
+
+Sigmoid <- function(X)
+{
+	1/(1 + exp(-X))
+}
+
+ProjectSolution <- function()
+{
+
+	trainAll <- read.csv('blogData_train.csv', header=FALSE)
+	data <- read.csv('blogData_train.csv', header=FALSE)
+	#setting seed
+	set.seed(123)
+
+	sample <- data[sample(nrow(data), 5000), ]
+	ind <- sample(5000, 4250)
+	
+	dataTrain <- sample[ind, ]
+	dataTest <- sample[-ind, ]
+	
+	
+	model <- list()
+	model$sense <- "min"
+	
+	require(Rmosek)
+	xmat <- data.matrix(dataTrain[,51:60])
+	ymat <- data.matrix(dataTest[,"V281"])
+	
+	cmat <- crossprod(xmat,ymat)
+	model$c <- as.vector(cmat)
+	
+	XMat <- crossprod(xmat,ymat)
+	XMat[upper.tri(XMat)]<-0
+	inds <- which(XMat != 0, arr.ind=TRUE)
+	model$qobj <- list(i = inds[,1], j = inds[,2], v = XMat[inds])
+	
+	model$A <- Matrix( rep(0, 10), nrow = 1, byrow=TRUE, sparse=TRUE )
+
+	blc<- c(-Inf)
+	buc<- c(Inf)
+	
+	model$bc <- rbind(blc, buc)
+	
+	blx<-rep(-Inf, 10)
+	bux<-rep(Inf, 10)
+	
+	model$bx<-rbind(blx, bux)
+	l<-mosek(model)
+	
+	print("Train Data - Mosek Error")
+	CheckErrorMosekParams(dataTrain[, 51:60], dataTrain[, "V281"])
+	print("Test Data - Mosek Error")
+	CheckErrorMosekParams(dataTest[, 51:60], dataTest[, "V281"])
+	
+	CheckLMErrors(dataTrain, dataTest)
+}
+
+CheckErrorMosekParams <- function(data, target){
+
+	yHat = data[,1]*-0.20473016 + data[,2]*-0.28727579 + data[,3]*0.02768148 + data[,4]*0.21594995 + data[,5]*0.00000000 + data[,6]*2.30850597 + data[,7]*-3.28659353 + data[,8]*-1.41793199 + data[,9]*-1.78338969
+	
+	errors <- (target - yHat)*(target - yHat)
+	
+	mse <- mean(errors)
+
+	print(mse)
+}
+
+CheckLMErrors <- function(data, testD) {
+
+	datafr <- data[, c(51:60, 281)]
+	print(colnames(datafr))
+	
+	lmodel <- lm(V281~., data=datafr)
+	print("Train Data - LM Error")
+	print(mean(lmodel$residuals^2))
+	
+	predicted <- predict(lmodel, testD[, c(51:60, 281)], se.fit=TRUE)
+		
+	MSE = mean((predicted$fit - testD[,281])^2)
+	print("Test Data - LM Error")
+	print(MSE)
+}
